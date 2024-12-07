@@ -1,162 +1,117 @@
-const express = require('express');
-const cors = require('cors');
-const avaliacoesJson = "avaliacoes.json"
-const fs = require('fs');
-const servidorBackend = express();
-const portaServidorBackend = 8086;
-const {adicionarJogo, coletarJogos, coletarJogoPeloUUID, excluirJogo} = require("./crudJogos.js")
-const {criarUsuario, coletarUsuarios, coletarUsuarioPeloNome, excluirUsuario} = require("./crudUsuarios.js")
-const {coletarDenuncias, adicionarDenuncia, coletarDenunciaPeloUUID, excluirDenuncia} = require("./crudDenuncias.js")
+const express = require('express')
+const cors = require('cors')
+const servidorBackend = express()
 
-servidorBackend.use(cors());
-servidorBackend.use(express.json());
-servidorBackend.set('view engine', 'ejs');
+const portaServidorBackend = 8080
 
-servidorBackend.listen(portaServidorBackend, () => console.log(`servidor backend rodando em http://localhost:${portaServidorBackend}`));
-
-servidorBackend.post('/avaliar', (requisicao, resposta) => {
-    const objetoRecebido = requisicao.body;
-    adicionarJogo(objetoRecebido)
-
-    resposta.status(200).json(objetoRecebido);
-});
+const {coletarInformacaoJogo_API, coletarJogos_API, atualizarInformacoes_BancoDados, coletarJogos_BancoDados, coletarJogoPorId_BancoDados} = require("./CRUDS/Jogos/GamesAPI.js")
+const {criarAvaliacao, coletarAvaliacoes, coletarAvaliacaoPeloID, excluirAvaliacao, coletarDadosDeAvaliacaoFeita, editarAvaliacao} = require("./CRUDS/Avaliacoes/CrudAvaliacoes.js")
+const {criarUsuario, coletarUsuarioPeloNome, excluirUsuario, uploadPerfilImage, coletarUsuarios} = require("./CRUDS/Usuarios/CrudUsuarios.js")
+const {criarAnalise, coletarAnalises, coletarAnalisePeloID, excluirAnalise, editarAnalise, coletarAnalisesDe} = require("./CRUDS/Analises/CrudAnalises.js")
 
 
-servidorBackend.get('/avaliacoes', (requisicao, resposta) => {
-    coletarJogos()
-    .then(objetoJson => {
-        resposta.json(objetoJson)
-    })
-    .catch(err => {
-        console.error('Erro ao coletar jogos:', err);
-    });
+const {atualizarRatingJogo} = require("./CRUDS/Jogos/UpdateRating.js")
+servidorBackend.use(express.json({ limit: '50mb' }))
+servidorBackend.use(express.urlencoded({ extended: true, limit: '50mb' }))
+servidorBackend.use(cors({
+    origin: '*',
+    allowedHeaders: '*'
+}))
 
-});
+servidorBackend.listen(portaServidorBackend,() => console.log(`servidor backend rodando em http://localhost:${portaServidorBackend}`))
 
-servidorBackend.get('/avaliacao/:uuid', (req, res) => {
-    const { uuid } = req.params;
+// --------------- JOGOS ---------------
+servidorBackend.get('/jogos', async (requisicao, resposta) => {
+    const dados = await coletarJogos_BancoDados()
+    resposta.status(200).json(dados)
+})
 
-    coletarJogoPeloUUID(uuid)
-    .then(jogo => {
-        res.json(jogo)
-    })
-    .catch(err => {
-        console.error('Erro ao coletar jogo pelo UUID:', err);
-    });
-
-
-});
+servidorBackend.get('/jogo/:id', async(requisicao, resposta) =>{
+    const { id  } = requisicao.params
+    const dados = await coletarJogoPorId_BancoDados(id)
+    resposta.status(200).json(dados)
+})
 
 
 
-servidorBackend.post('/criarUsuario', (req, res) => {
-    const objetoRecebido = req.body;
-    const nome = objetoRecebido.usuario
 
-    coletarUsuarioPeloNome(nome).
-    then(existe => {
+// ------------- AVALIACÕES -------------
+servidorBackend.post("/avaliar/:id", async(requisicao, resposta) => {
+    const dados = requisicao.body
+    const avaliacao = await criarAvaliacao(dados)
+    atualizarRatingJogo(dados.game_id)
+    resposta.status(200).json(avaliacao)
+})
 
-        if (existe.length === 0) {
-            criarUsuario(objetoRecebido)
-            res.json(true);
-        } else {
-            res.json(false);
-        }
-    })
-    .catch(err => {
-        console.error('Erro ao coletar jogo pelo UUID:', err);
-    });
+servidorBackend.get('/avaliacoes/:username', async(requisicao, resposta) =>{
+    const { username  } = requisicao.params
+    const dados = await coletarDadosDeAvaliacaoFeita(username)
+    resposta.status(200).json(dados)
+})
 
-
-});
-
-servidorBackend.get('/usuarios/:usuario', (req, res) => {
-    const { usuario } = req.params;
-
-    coletarUsuarioPeloNome(usuario).
-    then(resultado => {
-        if (resultado.length == 0) {
-            console.error("Este usuario não existe")
-            return res.status(404).json({ message: 'Usuario não encontrado' });
-        } else {
-            return res.status(200).json(resultado[0])
-        }
-    })
-    .catch(err => {
-        return console.error('Erro ao coletar jogo pelo UUID:', err);
-    });
+servidorBackend.put('/avaliacoes/:id', async (req, res) => {
+    const { id } = req.params
+    const novosDados = req.body
+    const resultado = await editarAvaliacao(id, novosDados.media_rating)
+    atualizarRatingJogo(novosDados.game_id)
+    res.json(resultado)
+})
 
 
-});
 
-servidorBackend.get('/denuncias', (req, res) => {
+// -------------- USUARIOS --------------
+servidorBackend.post('/criarUsuario', async (req, res) => {
+    const dados = req.body
+    const usuario = await criarUsuario(dados)
+    res.status(200).json(usuario)
+})
 
-    coletarDenuncias()
-    .then(denuncias => {
-        res.json(denuncias)
-    })
-    .catch(err => {
-        console.error('Erro ao coletar denuncias pelo UUID:', err);
-    });
+servidorBackend.get('/usuario/:username', async (req, res) => {
+    const { username } = req.params
+    const usuario = await coletarUsuarioPeloNome(username)
+    res.status(200).json(usuario)
+})
 
-
-});
-
-servidorBackend.post('/denunciar', (req, res) => {
-    const objetoRecebido = req.body;
-    adicionarDenuncia(objetoRecebido)
-
-    res.status(200).json(objetoRecebido);
+servidorBackend.get('/usuarios', async (req, res) => {
+    const usuarios = await coletarUsuarios()
+    res.status(200).json(usuarios)
+})
 
 
-});
+servidorBackend.delete('/excluirUsuario/:username', async (req, res) => {
+    const { username } = req.params
+    const deletar = await excluirUsuario(username) 
+    res.status(200).json(deletar)
+})
 
-servidorBackend.get('/denuncia/:uuid', (req, res) => {
-    const { uuid } = req.params;
-
-    coletarDenunciaPeloUUID(uuid)
-    .then(denuncia => {
-        res.json(denuncia)
-    })
-    .catch(err => {
-        console.error('Erro ao coletar jogo pelo UUID:', err);
-    });
+servidorBackend.post('/uploadperfilimage', async (req, res) => {
+    const novosDados = req.body
+    console.log(novosDados)
+    const resultado = await uploadPerfilImage(novosDados)
+    res.json(resultado)
+})
 
 
-});
+// -------------- ANALISES --------------
+servidorBackend.get('/analises', async (req, res) => {
+    const analises = await coletarAnalises()
+    res.status(200).json(analises)
+})
 
-servidorBackend.delete('/excluirDenuncia/:uuid', (req, res) => {
-    const { uuid } = req.params;
+servidorBackend.get('/analisesDe/:username', async (req, res) => {
+    const { username } = req.params
+    const analises = await coletarAnalisesDe(username)
+    res.status(200).json(analises)
+})
 
-    try {
-        excluirDenuncia(uuid);
-        res.status(200).send("Sucesso em remover denuncia!")
-    } catch (e){
-        res.status(404).send("Erro ao tentar remover denuncia")
-        console.log("Erro ao tentar remover denuncia!")
-    }
-});
+servidorBackend.get('/analise/:id', async (req, res) => {
+    const { id } = req.params
+    const analise = await coletarAnalisePeloID(id)
+    res.status(200).json(analise)
+})
 
-servidorBackend.delete('/excluirUsuario/:uuid', (req, res) => {
-    const { uuid } = req.params;
-
-    try {
-        excluirUsuario(uuid);
-        res.status(200).send("Sucesso em remover usuario!")
-    } catch (e){
-        res.status(404).send("Erro ao tentar remover usuario")
-        console.log("Erro ao tentar remover usuario!")
-    }
-});
-
-servidorBackend.delete('/excluirAvaliacao/:uuid', (req, res) => {
-    const { uuid } = req.params;
-
-    try {
-        excluirJogo(uuid);
-        res.status(200).send("Sucesso em remover avaliação!")
-    } catch (e){
-        res.status(404).send("Erro ao tentar remover avaliação")
-        console.log("Erro ao tentar remover avaliação!")
-    }
-});
+servidorBackend.post('/criarAnalise', async (req, res) => {
+    const dados = req.body
+    const analises = await criarAnalise(dados)
+    res.status(200).json(analises)
+})
