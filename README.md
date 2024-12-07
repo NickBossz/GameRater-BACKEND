@@ -18,4 +18,6 @@ npm install
 
 # Iniciar a aplicação
 node ./servidor.js
+ou
+npm start
 ```
